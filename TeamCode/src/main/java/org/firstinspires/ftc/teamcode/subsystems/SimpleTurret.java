@@ -5,7 +5,7 @@ import com.pedropathing.geometry.Pose;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.util.ElapsedTime; // <--- ДОБАВЛЕНО
+import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.teamcode.math.MathUtils;
 import org.firstinspires.ftc.teamcode.math.PIDFController;
@@ -21,15 +21,13 @@ public class SimpleTurret {
     private final PIDFController controller;
 
     public static double TICKS_PER_RADIAN = 191.0;
-    public static double LIMIT_MIN = Math.toRadians(-120);
-    public static double LIMIT_MAX = Math.toRadians(120);
+    public static double LIMIT_MIN = Math.toRadians(-150);
+    public static double LIMIT_MAX = Math.toRadians(150);
 
     // === PID ===
     public static double ODO_P = 1;
     public static double ODO_I = 0.0;
     public static double ODO_D = 0.08;
-
-
 
     public static double VIS_P = 1.38;
     public static double VIS_I = 0.0;
@@ -37,9 +35,8 @@ public class SimpleTurret {
 
     public static double kS = 0.02;
 
-    // === НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ ТАЙМАУТА ===
-    private ElapsedTime timeSinceLastSeen = new ElapsedTime(); // Таймер
-    public static double LOCK_TIMEOUT = 1; // Время ожидания перед сбросом (сек)
+    private ElapsedTime timeSinceLastSeen = new ElapsedTime();
+    public static double LOCK_TIMEOUT = 1;
 
     private double targetAngle = 0;
     private int targetTagId = -1;
@@ -59,10 +56,20 @@ public class SimpleTurret {
         this.targetTagId = id;
         this.targetX = x;
         this.targetY = y;
+        // Если мы были в IDLE или MANUAL, начинаем поиск
         if (currentState == State.IDLE || currentState == State.MANUAL) {
             currentState = State.SEARCHING;
         }
     }
+
+    // === НОВЫЙ МЕТОД ===
+    public void hold() {
+        // Переключаем в MANUAL.
+        // В этом режиме update() не трогает targetAngle (не считает одометрию и камеру),
+        // но PID продолжает держать тот угол, который был вычислен последним.
+        this.currentState = State.MANUAL;
+    }
+    // ===================
 
     public void setTargetAngle(double angleRad) {
         this.currentState = State.MANUAL;
@@ -82,43 +89,35 @@ public class SimpleTurret {
                 break;
 
             case MANUAL:
+                // Здесь мы просто держим targetAngle.
+                // Никакой тяжелой математики или Vision.
                 controller.setPIDF(ODO_P, ODO_I, ODO_D, 0, kS);
                 break;
 
             case SEARCHING:
                 controller.setPIDF(ODO_P, ODO_I, ODO_D, 0, kS);
-
                 if (robotPose != null) {
                     calculateOdometryAngle(robotPose);
                 }
-
-                // Если увидели тег -> переходим в LOCKED
                 if (vision != null && vision.getTarget(targetTagId) != null) {
                     currentState = State.LOCKED;
-                    timeSinceLastSeen.reset(); // <--- Сбрасываем таймер при входе
+                    timeSinceLastSeen.reset();
                 }
                 break;
 
             case LOCKED:
                 controller.setPIDF(VIS_P, VIS_I, VIS_D, 0, kS);
-
                 AprilTagDetection tag = (vision != null) ? vision.getTarget(targetTagId) : null;
 
                 if (tag != null) {
-                    // Видим тег: сбрасываем таймер и обновляем угол
                     timeSinceLastSeen.reset();
-
                     double bearingRad = Math.toRadians(tag.ftcPose.bearing);
                     double currentRad = getCurrentAngle();
                     targetAngle = currentRad + bearingRad;
                 } else {
-                    // Тег потерян: проверяем, сколько времени прошло
                     if (timeSinceLastSeen.seconds() > LOCK_TIMEOUT) {
-                        // Тайм-аут вышел -> переходим на одометрию
                         currentState = State.SEARCHING;
                     }
-                    // Если тайм-аут еще не вышел, мы ничего не меняем.
-                    // targetAngle остается старым (держим последнюю позицию).
                 }
                 break;
         }

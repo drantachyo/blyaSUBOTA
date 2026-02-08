@@ -8,11 +8,11 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 
 import org.firstinspires.ftc.teamcode.math.PoseStorage;
-import org.firstinspires.ftc.teamcode.math.ShooterMath; // Импорт математики
+import org.firstinspires.ftc.teamcode.math.ShooterMath;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 import org.firstinspires.ftc.teamcode.subsystems.*;
 
-@TeleOp(name = "RED TELEOP", group = "Final")
+@TeleOp(name = "RED TELEOP FINAL", group = "Final")
 public class FinalCombinedTeleOpRed extends OpMode {
 
     // === СИСТЕМЫ ===
@@ -30,7 +30,7 @@ public class FinalCombinedTeleOpRed extends OpMode {
     // === КООРДИНАТЫ И НАСТРОЙКИ ===
     private static final double TARGET_X = 138;
     private static final double TARGET_Y = 138;
-    private static final int TAG_ID = 24;
+    private static final int TAG_ID = 24; // ID апрельтага на красной стороне
     private static final Pose START_POSE = new Pose(133.4, 8, 0);
 
     public enum RobotState { IDLE, INTAKE, OUTTAKE, PREP_SHOOT, SHOOTING }
@@ -43,17 +43,17 @@ public class FinalCombinedTeleOpRed extends OpMode {
 
     @Override
     public void init() {
+        // Инициализация Pedro Pathing
         follower = Constants.createFollower(hardwareMap);
         if (PoseStorage.currentPose != null) {
-            // Если пришли из автонома - берем сохраненную позицию
             follower.setStartingPose(PoseStorage.currentPose);
             telemetry.addLine("Loaded Pose from Auto!");
         } else {
-            // Если запустили ТелеОп "с нуля" - ставим дефолт
             follower.setStartingPose(START_POSE);
             telemetry.addLine("No Auto Pose found. Using Default.");
         }
 
+        // Инициализация моторов шасси для ручного тормоза
         motors = new DcMotorEx[]{
                 hardwareMap.get(DcMotorEx.class, "lf"),
                 hardwareMap.get(DcMotorEx.class, "lr"),
@@ -61,55 +61,53 @@ public class FinalCombinedTeleOpRed extends OpMode {
                 hardwareMap.get(DcMotorEx.class, "rr")
         };
 
+        // Инициализация подсистем
         turret = new SimpleTurret(hardwareMap);
         shooter = new Shooter(hardwareMap);
         intake = new Intake(hardwareMap);
         vision = new Vision(hardwareMap);
         hood = new Hood(hardwareMap);
         claw = new Claw(hardwareMap);
-        claw.close();
 
-        telemetry.addLine("READY with Variable Shooter Logic.");
+        claw.close(); // Старт с закрытой клешней
+
+        telemetry.addLine("READY: Hold Logic Implementation");
     }
 
     @Override
     public void start() {
-        if (PoseStorage.currentPose != null) {
-            // Если пришли из автонома - берем сохраненную позицию
-            follower.setStartingPose(PoseStorage.currentPose);
-        } else {
-            // Если запустили ТелеОп "с нуля" - ставим дефолт
-            follower.setStartingPose(START_POSE);
-        }
         follower.startTeleopDrive();
-        vision.applyCombatSettings(); // Применяем настройки камеры на старте
+        vision.applyCombatSettings(); // Оптимизация камеры
     }
 
     @Override
     public void loop() {
-        // 1. ОБНОВЛЕНИЕ СИСТЕМ
+        // 1. ОБНОВЛЕНИЕ БАЗОВЫХ СИСТЕМ
         follower.update();
         shooter.update();
         Pose pose = follower.getPose();
 
-        // 2. ПОЛУЧЕНИЕ ДАННЫХ С КАМЕРЫ И РАСЧЕТ МАТЕМАТИКИ
-        double currentDist = vision.getDistanceFromTarget(TAG_ID);
-
-        if (currentDist != -1) {
-            lastKnownDistance = currentDist; // Запоминаем новую дистанцию
+        // 2. РАСЧЕТ ДИСТАНЦИИ И ПАРАМЕТРОВ СТРЕЛЬБЫ
+        // Если мы не стреляем прямо сейчас, можно обновлять дистанцию
+        if (currentState != RobotState.SHOOTING) {
+            double currentDist = vision.getDistanceFromTarget(TAG_ID);
+            if (currentDist != -1) {
+                lastKnownDistance = currentDist;
+            }
         }
-        // Если тег потерян, lastKnownDistance остается старым
 
-        // Считаем параметры стрельбы
+        // Пересчитываем RPM и Hood всегда на основе последней известной дистанции
         calculatedRPM = ShooterMath.calculateRPM(lastKnownDistance);
         calculatedHood = ShooterMath.calculateHood(lastKnownDistance);
 
-
         // 3. УПРАВЛЕНИЕ ШАССИ (Pedro + Brake Logic)
-        if (gamepad1.options) follower.setPose(START_POSE);
+        if (gamepad1.options) {
+            follower.setPose(START_POSE);
+            PoseStorage.currentPose = START_POSE;
+        }
 
         if (gamepad1.b) {
-            // ТОРМОЗ
+            // ТОРМОЗ (Lock)
             follower.setTeleOpDrive(0, 0, 0, false);
             if (!isBraking) {
                 for (DcMotorEx m : motors) m.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -133,17 +131,17 @@ public class FinalCombinedTeleOpRed extends OpMode {
         }
 
         // 4. ЛОГИКА МЕХАНИЗМОВ (STATE MACHINE)
-        boolean aim = gamepad2.left_trigger > 0.1;
-        boolean fire = gamepad2.right_trigger > 0.1;
+        boolean aim = gamepad2.left_trigger > 0.1;   // Левый курок - Preparing
+        boolean fire = gamepad2.right_trigger > 0.1; // Правый курок - Shooting
 
         switch (currentState) {
             case IDLE:
                 shooter.setTargetRPM(0);
                 intake.stop();
                 claw.close();
-                // Худ можно опустить или оставить как есть, здесь оставляем в calculatedHood для готовности
+                // Держим худ наготове, но не нагружаем сервы лишний раз
                 hood.setBasePosition(calculatedHood);
-                hood.update(shooter.getCurrentRPM(), 0); // Без нагрузки
+                hood.update(shooter.getCurrentRPM(), 0);
 
                 if (aim) currentState = RobotState.PREP_SHOOT;
                 else if (gamepad2.b) currentState = RobotState.INTAKE;
@@ -163,11 +161,9 @@ public class FinalCombinedTeleOpRed extends OpMode {
                 break;
 
             case PREP_SHOOT:
-                // Используем рассчитанные значения
+                // Раскручиваемся
                 shooter.setTargetRPM(calculatedRPM);
                 hood.setBasePosition(calculatedHood);
-
-                // Передаем (текущий RPM, целевой RPM) для компенсации отдачи
                 hood.update(shooter.getCurrentRPM(), calculatedRPM);
 
                 if (!aim) currentState = RobotState.IDLE;
@@ -175,33 +171,44 @@ public class FinalCombinedTeleOpRed extends OpMode {
                 break;
 
             case SHOOTING:
-                // Поддерживаем обороты и угол
+                // Поддерживаем обороты
                 shooter.setTargetRPM(calculatedRPM);
                 hood.setBasePosition(calculatedHood);
                 hood.update(shooter.getCurrentRPM(), calculatedRPM);
 
-                // Стреляем
+                // Открываем огонь
                 claw.open();
-                intake.intake();
+                intake.intake(); // Подача кольца
 
+                // Если отпустили курок стрельбы - обратно в Prep, если оба - в Idle
                 if (!aim || !fire) currentState = aim ? RobotState.PREP_SHOOT : RobotState.IDLE;
                 break;
         }
 
-        // 5. ТУРЕЛЬ И ТЕЛЕМЕТРИЯ
-        if (currentState == RobotState.PREP_SHOOT || currentState == RobotState.SHOOTING) {
+        // 5. ЛОГИКА ТУРЕЛИ (ОПТИМИЗИРОВАННАЯ)
+        if (currentState == RobotState.SHOOTING) {
+            // ВАЖНО: Когда стреляем, отключаем Vision и Одометрию, просто держим угол (PID).
+            // Это экономит ресурсы процессора для Shooter PID.
+            turret.hold();
+        }
+        else if (currentState == RobotState.PREP_SHOOT) {
+            // Когда целимся (но не стреляем), активно используем камеру и одометрию.
             turret.track(TAG_ID, TARGET_X, TARGET_Y);
-        } else {
+        }
+        else {
+            // В остальных случаях - парковка в ноль (или выключение).
             turret.idle();
         }
+
+        // Вызываем update один раз в конце
+        // Если turret.hold() был вызван, update пропустит тяжелые вычисления.
         turret.update(pose, vision);
 
-        // Debug Info
+        // 6. ТЕЛЕМЕТРИЯ
         telemetry.addData("STATE", currentState);
-        telemetry.addData("Vision", currentDist != -1 ? "LOCKED" : "SEARCHING");
-        telemetry.addData("Dist Used", "%.1f inch", lastKnownDistance);
-        telemetry.addData("Calc RPM", "%.0f", calculatedRPM);
-        telemetry.addData("Calc Hood", "%.3f", calculatedHood);
+        telemetry.addData("Turret", turret.getState()); // Покажет MANUAL во время стрельбы
+        telemetry.addData("Dist", "%.1f (Target: %d)", lastKnownDistance, TAG_ID);
+        telemetry.addData("Shooter", "RPM: %.0f / Tgt: %.0f", shooter.getCurrentRPM(), calculatedRPM);
         telemetry.update();
     }
 }

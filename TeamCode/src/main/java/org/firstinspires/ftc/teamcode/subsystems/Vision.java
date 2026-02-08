@@ -29,7 +29,7 @@ public class Vision {
         aprilTag.setDecimation(3);
 
         portal = new VisionPortal.Builder()
-                .setCamera(hw.get(WebcamName.class, "Webcam 1")) // Проверь имя в конфиге!
+                .setCamera(hw.get(WebcamName.class, "Webcam")) // Проверь имя в конфиге!
                 .addProcessor(aprilTag)
                 .setCameraResolution(new Size(640, 480))
                 .setStreamFormat(VisionPortal.StreamFormat.YUY2)

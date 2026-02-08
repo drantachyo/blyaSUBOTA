@@ -4,43 +4,42 @@ import com.qualcomm.robotcore.util.Range;
 
 public class ShooterMath {
 
-    // === ГРАНИЦЫ ТВОЕЙ ТАБЛИЦЫ ===
-    // Впиши сюда минимальный и максимальный X (дистанцию),
-    // на которых ты проводил замеры.
-    // Если дистанция будет меньше 24, мы будем считать её как 24.
-    // Если больше 140, будем считать как 140.
-    public static double MIN_DIST = 34.9;  // <-- ПОМЕНЯЙ НА СВОЙ МИНИМУМ
-    public static double MAX_DIST = 81; // <-- ПОМЕНЯЙ НА СВОЙ МАКСИМУМ
+    // === BOUNDARIES ===
+    // Updated based on the data tables in the images (29.7 to 72.2)
+    public static double MIN_DIST = 29.7;
+    public static double MAX_DIST = 72.2;
 
     /**
-     * Считает RPM.
-     * Формула: y = 0.00672846x^3 - 0.922392x^2 + 56.63474x + 2029.71146
+     * Calculates RPM based on cubic regression from Image 2.
+     * Equation: y = 0.00571245x^3 - 0.711202x^2 + 43.02844x + 2469.40674
      */
     public static double calculateRPM(double distance) {
-        // 1. Сначала обрезаем дистанцию, чтобы не считать "погоду" за пределами графика
+        // Clip distance to stay within valid data range
         double x = Range.clip(distance, MIN_DIST, MAX_DIST);
 
-        double y = 0.00672846 * Math.pow(x, 3)
-                - 0.922392   * Math.pow(x, 2)
-                + 56.63474   * x
-                + 2050.71146;
+        double y = 0.00571245 * Math.pow(x, 3)
+                - 0.711202   * Math.pow(x, 2)
+                + 43.02844   * x
+                + 2480.40674;
 
+        // Clip result to ensure safety (adjust max RPM if needed)
         return Range.clip(y, 0, 4800);
     }
 
     /**
-     * Считает Hood.
-     * Формула: y = -0.0000148015x^3 + 0.00278868x^2 - 0.177262x + 3.91881
+     * Calculates Hood position based on cubic regression from Image 1.
+     * Equation: y = -0.00000238679x^3 + 0.000803582x^2 - 0.0718718x + 1.95
      */
     public static double calculateHood(double distance) {
-        // 1. Тоже обрезаем дистанцию
+        // Clip distance to stay within valid data range
         double x = Range.clip(distance, MIN_DIST, MAX_DIST);
 
-        double y = -0.0000148015 * Math.pow(x, 3)
-                + 0.00278868    * Math.pow(x, 2)
-                - 0.177262      * x
-                + 3.91881;
+        double y = -0.00000238679 * Math.pow(x, 3)
+                + 0.000803582    * Math.pow(x, 2)
+                - 0.0718718      * x
+                + 1.95;
 
+        // Clip result to servo range (0.0 to 1.0)
         return Range.clip(y, 0.0, 1.0);
     }
 }
