@@ -28,15 +28,12 @@ public class FinalCombinedTeleOpBlue extends OpMode {
     private boolean isBraking = false;
 
     // === КООРДИНАТЫ И НАСТРОЙКИ (СИНИЕ) ===
-    // Для синих корзина обычно слева (X маленький), высота Y та же
     private static final double TARGET_X = 6;
     private static final double TARGET_Y = 138;
-    private static final int TAG_ID = 20; // Синий тег
+    private static final int TAG_ID = 20;
 
-    // Дефолтная позиция для СИНИХ (Start Heading = 0, справа внизу поля)
     private static final Pose START_POSE = new Pose(133.4, 8, Math.toRadians(0));
 
-    // Локальная переменная для безопасного переноса позы из автонома
     private Pose savedAutoPose = null;
 
     public enum RobotState { IDLE, INTAKE, OUTTAKE, PREP_SHOOT, SHOOTING }
@@ -49,10 +46,8 @@ public class FinalCombinedTeleOpBlue extends OpMode {
 
     @Override
     public void init() {
-        // 1. Инициализация Follower
         follower = Constants.createFollower(hardwareMap);
 
-        // 2. БЕЗОПАСНАЯ ЗАГРУЗКА POSE STORAGE (Как в Красном)
         if (PoseStorage.currentPose != null) {
             savedAutoPose = new Pose(
                     PoseStorage.currentPose.getX(),
@@ -63,14 +58,12 @@ public class FinalCombinedTeleOpBlue extends OpMode {
             telemetry.addLine("✅ LOADED AUTO POSE");
         } else {
             savedAutoPose = null;
-            follower.setStartingPose(START_POSE);
+            follower.setStartingPose(new Pose(73.5, 8, Math.toRadians(0)));
             telemetry.addLine("⚠️ NO AUTO POSE. USING DEFAULT (BLUE).");
         }
 
-        // Очищаем статик
         PoseStorage.currentPose = null;
 
-        // 3. Инициализация железа
         motors = new DcMotorEx[]{
                 hardwareMap.get(DcMotorEx.class, "lf"),
                 hardwareMap.get(DcMotorEx.class, "lr"),
@@ -102,7 +95,6 @@ public class FinalCombinedTeleOpBlue extends OpMode {
     public void start() {
         follower.startTeleopDrive();
 
-        // Защита от сброса координат
         if (savedAutoPose != null) {
             follower.setPose(savedAutoPose);
         }
@@ -117,25 +109,27 @@ public class FinalCombinedTeleOpBlue extends OpMode {
         shooter.update();
         Pose currentPose = follower.getPose();
 
-        // 2. РАСЧЕТ ДИСТАНЦИИ (Активный, как в Красном)
+        // 2. РАСЧЕТ ДИСТАНЦИИ
         double dist = vision.getDistanceFromTarget(TAG_ID);
-        if (dist != -1) {
+        boolean tagVisible = (dist != -1);
+
+        if (tagVisible) {
             lastKnownDistance = dist;
         }
 
         calculatedRPM = ShooterMath.calculateRPM(lastKnownDistance);
         calculatedHood = ShooterMath.calculateHood(lastKnownDistance);
 
-        // 3. СБРОС КООРДИНАТ (Опционально)
+        // 3. СБРОС КООРДИНАТ
         if (gamepad1.options) {
             follower.setPose(START_POSE);
         }
 
         // 4. УПРАВЛЕНИЕ ШАССИ + ТОРМОЗ
+        // ИЗМЕНЕНИЕ: Убран авто-тормоз при стрельбе
         boolean manualBrake = gamepad1.b;
-        boolean autoBrake = (currentState == RobotState.SHOOTING);
 
-        if (manualBrake || autoBrake) {
+        if (manualBrake) {
             follower.setTeleOpDrive(0, 0, 0, false);
             if (!isBraking) {
                 for (DcMotorEx m : motors) m.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -149,11 +143,6 @@ public class FinalCombinedTeleOpBlue extends OpMode {
             double speedMultiplier = gamepad1.right_bumper ? 0.3 : 1.0;
             double turn = Math.pow((gamepad1.left_trigger - gamepad1.right_trigger), 3);
 
-            // Используем стандартное управление (с минусами), так как Pedro сам разберется с Field Centric
-            // Если едет не туда - проверьте галочку "Field Centric" (последний аргумент false = Robot Centric?)
-            // Pedro: setTeleOpDrive(x, y, z, fieldCentric) -> обычно false это Robot Centric в дефолтном OpMode,
-            // но в Follower это обычно управляется Heading'ом.
-            // Оставляю как в Красном рабочем коде.
             follower.setTeleOpDrive(
                     gamepad1.left_stick_y * speedMultiplier,
                     gamepad1.left_stick_x * speedMultiplier,
@@ -212,8 +201,7 @@ public class FinalCombinedTeleOpBlue extends OpMode {
                 break;
         }
 
-        // 6. УПРАВЛЕНИЕ ТУРЕЛЬЮ (АКТИВНЫЙ ТРЕКИНГ)
-        // ВАЖНО: Мы НЕ используем hold(), мы используем track() даже при стрельбе.
+        // 6. УПРАВЛЕНИЕ ТУРЕЛЬЮ
         if (currentState == RobotState.PREP_SHOOT || currentState == RobotState.SHOOTING) {
             turret.track(TAG_ID, TARGET_X, TARGET_Y);
         } else {
@@ -223,11 +211,25 @@ public class FinalCombinedTeleOpBlue extends OpMode {
         turret.update(currentPose, vision);
 
         // 7. ТЕЛЕМЕТРИЯ
+        telemetry.addData("═══════════════════════", "");
         telemetry.addData("SIDE", "BLUE");
         telemetry.addData("STATE", currentState);
+        telemetry.addData("═══════════════════════", "");
+
+        // VISION STATUS
+        if (tagVisible) {
+            telemetry.addData("📷 CAMERA", "✅ TAG VISIBLE");
+            telemetry.addData("Distance", "%.1f inch", dist);
+        } else {
+            telemetry.addData("📷 CAMERA", "❌ TAG LOST");
+            telemetry.addData("Last Dist", "%.1f inch", lastKnownDistance);
+        }
+
+        telemetry.addData("═══════════════════════", "");
         telemetry.addData("Pose", "X:%.1f Y:%.1f H:%.1f",
                 currentPose.getX(), currentPose.getY(), Math.toDegrees(currentPose.getHeading()));
-        telemetry.addData("Dist", "%.1f", lastKnownDistance);
+        telemetry.addData("Calc RPM", "%.0f", calculatedRPM);
+        telemetry.addData("Calc Hood", "%.3f", calculatedHood);
         telemetry.update();
     }
 }

@@ -46,7 +46,7 @@ public class Vision {
      */
     public boolean applyCombatSettings() {
         // Выдержка 2мс, Усиление 250 (можно поиграть с Gain, если слишком темно)
-        return setManualExposure(2, 130);
+        return setManualExposure(15, 255);
     }
 
     private boolean setManualExposure(int exposureMS, int gain) {

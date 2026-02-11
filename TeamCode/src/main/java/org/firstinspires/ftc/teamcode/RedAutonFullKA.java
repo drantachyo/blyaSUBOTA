@@ -21,8 +21,8 @@ import com.pedropathing.follower.Follower;
 import com.pedropathing.paths.PathChain;
 import com.pedropathing.geometry.Pose;
 
-@Autonomous(name = "RED FULL competative", group = "Competition")
-public class RedAutonFull extends OpMode {
+@Autonomous(name = "RED FULL smooth", group = "Competition")
+public class RedAutonFullKA extends OpMode {
 
     // =========================================================
     // НАСТРОЙКИ
@@ -31,19 +31,21 @@ public class RedAutonFull extends OpMode {
 
     // Скорость
     public static double SPEED_TO_BALLS = 1.0;
-    public static double SPEED_TO_SCORE = 0.65;
+    public static double SPEED_TO_SCORE_FAST = 1.0; // Скорость в начале пути к score
+    public static double SPEED_TO_SCORE_SLOW = 0.65; // Скорость в конце пути к score
+    public static double DECEL_START_T = 0.6; // T-значение, с которого начинается замедление (0.0-1.0)
 
     // Тайминги
     public static double SHOOT_TIME = 1.6;
     public static double INTAKE_WAIT_TIME = 0.3;
 
     // Фиксированные значения
-    public static double TARGET_RPM = 3820;
+    public static double TARGET_RPM = 3850;
     public static double IDLE_RPM = 2500;
     public static double TARGET_HOOD = 0.0;
 
     // ВАЖНО: Угол турели относительно корпуса (по энкодеру)
-    public static double TARGET_TURRET_DEG = 50;
+    public static double TARGET_TURRET_DEG = 47;
 
     // Системы
     private Follower follower;
@@ -74,6 +76,7 @@ public class RedAutonFull extends OpMode {
         TO_BALL_FAR, WAIT_BALL_FAR, TO_SCORE_FAR, SCORE_FAR,
         PARK, IDLE
     }
+
     private AutoState currentState = AutoState.START;
 
     @Override
@@ -144,10 +147,11 @@ public class RedAutonFull extends OpMode {
 
         // ОБЯЗАТЕЛЬНО вызываем update.
         // Мы передаем pose и vision, потому что метод этого требует (по сигнатуре),
-        // но так как мы использовали setTargetAngle, турель находится в состоянии MANUAL
-        // и внутри себя НЕ использует pose для расчета угла. Она работает чисто по энкодеру.
+        // но так как мы использовали setTargetAngle, турель находится в состоянии
+        // MANUAL
+        // и внутри себя НЕ использует pose для расчета угла. Она работает чисто по
+        // энкодеру.
         turret.update(pose, vision);
-
 
         // --- ОСТАЛЬНЫЕ СИСТЕМЫ ---
         hood.setBasePosition(TARGET_HOOD);
@@ -170,7 +174,21 @@ public class RedAutonFull extends OpMode {
                     hood.update(shooter.getCurrentRPM(), 0);
                 }
 
-                if (currentState == AutoState.PARK) intake.stop();
+                if (currentState == AutoState.PARK)
+                    intake.stop();
+            }
+        }
+
+        // --- ПЛАВНОЕ ТОРМОЖЕНИЕ при подъезде к score ---
+        if (currentState.name().contains("TO_SCORE")) {
+            double t = follower.getCurrentTValue();
+            if (t < DECEL_START_T) {
+                follower.setMaxPower(SPEED_TO_SCORE_FAST);
+            } else {
+                // Линейная интерполяция: от FAST до SLOW
+                double progress = (t - DECEL_START_T) / (1.0 - DECEL_START_T);
+                double speed = SPEED_TO_SCORE_FAST + (SPEED_TO_SCORE_SLOW - SPEED_TO_SCORE_FAST) * progress;
+                follower.setMaxPower(speed);
             }
         }
 
@@ -180,90 +198,114 @@ public class RedAutonFull extends OpMode {
         switch (currentState) {
             case TO_SCORE_PRELOAD:
                 if (!actionTriggered && timer.seconds() > 0.1) {
-                    if (!SILENT_MODE) intake.stop();
+                    if (!SILENT_MODE)
+                        intake.stop();
                     actionTriggered = true;
                 }
-                if (!follower.isBusy() && isShooterReady) setPathState(AutoState.SCORE_PRELOAD);
+                if (!follower.isBusy() && isShooterReady)
+                    setPathState(AutoState.SCORE_PRELOAD);
                 break;
 
             case SCORE_PRELOAD:
-                if (timer.seconds() > SHOOT_TIME) setPathState(AutoState.TO_BALL_NEAR);
+                if (timer.seconds() > SHOOT_TIME)
+                    setPathState(AutoState.TO_BALL_NEAR);
                 break;
 
             case TO_BALL_NEAR:
-                if(!actionTriggered && follower.getCurrentTValue() > 0.2) {
-                    if (!SILENT_MODE) intake.intake();
+                if (!actionTriggered && follower.getCurrentTValue() > 0.2) {
+                    if (!SILENT_MODE)
+                        intake.intake();
                     actionTriggered = true;
                 }
-                if (!follower.isBusy()) setPathStateInternal(AutoState.WAIT_BALL_NEAR);
+                if (!follower.isBusy())
+                    setPathStateInternal(AutoState.WAIT_BALL_NEAR);
                 break;
             case WAIT_BALL_NEAR:
-                if (timer.seconds() > INTAKE_WAIT_TIME) setPathState(AutoState.TO_OPEN_GATE);
+                if (timer.seconds() > INTAKE_WAIT_TIME)
+                    setPathState(AutoState.TO_OPEN_GATE);
                 break;
 
             case TO_OPEN_GATE:
-                if(!actionTriggered && follower.getCurrentTValue() > 0.5) {
-                    if (!SILENT_MODE) intake.intake();
+                if (!actionTriggered && follower.getCurrentTValue() > 0.5) {
+                    if (!SILENT_MODE)
+                        intake.intake();
                     actionTriggered = true;
                 }
-                if (!follower.isBusy()) setPathState(AutoState.TO_SCORE_NEAR);
+                if (!follower.isBusy())
+                    setPathState(AutoState.TO_SCORE_NEAR);
                 break;
 
             case TO_SCORE_NEAR:
                 if (!actionTriggered && timer.seconds() > 0.3) {
-                    if (!SILENT_MODE) intake.stop();
+                    if (!SILENT_MODE)
+                        intake.stop();
                     actionTriggered = true;
                 }
-                if (!follower.isBusy() && isShooterReady) setPathState(AutoState.SCORE_NEAR);
+                if (!follower.isBusy() && isShooterReady)
+                    setPathState(AutoState.SCORE_NEAR);
                 break;
             case SCORE_NEAR:
-                if (timer.seconds() > SHOOT_TIME) setPathState(AutoState.TO_BALL_MIDDLE);
+                if (timer.seconds() > SHOOT_TIME)
+                    setPathState(AutoState.TO_BALL_MIDDLE);
                 break;
 
             case TO_BALL_MIDDLE:
-                if(!actionTriggered && follower.getCurrentTValue() > 0.2) {
-                    if (!SILENT_MODE) intake.intake();
+                if (!actionTriggered && follower.getCurrentTValue() > 0.2) {
+                    if (!SILENT_MODE)
+                        intake.intake();
                     actionTriggered = true;
                 }
-                if (!follower.isBusy()) setPathStateInternal(AutoState.WAIT_BALL_MIDDLE);
+                if (!follower.isBusy())
+                    setPathStateInternal(AutoState.WAIT_BALL_MIDDLE);
                 break;
             case WAIT_BALL_MIDDLE:
-                if (timer.seconds() > INTAKE_WAIT_TIME) setPathState(AutoState.TO_SCORE_MIDDLE);
+                if (timer.seconds() > INTAKE_WAIT_TIME)
+                    setPathState(AutoState.TO_SCORE_MIDDLE);
                 break;
             case TO_SCORE_MIDDLE:
                 if (!actionTriggered && timer.seconds() > 0.3) {
-                    if (!SILENT_MODE) intake.stop();
+                    if (!SILENT_MODE)
+                        intake.stop();
                     actionTriggered = true;
                 }
-                if (!follower.isBusy() && isShooterReady) setPathState(AutoState.SCORE_MIDDLE);
+                if (!follower.isBusy() && isShooterReady)
+                    setPathState(AutoState.SCORE_MIDDLE);
                 break;
             case SCORE_MIDDLE:
-                if (timer.seconds() > SHOOT_TIME) setPathState(AutoState.TO_BALL_FAR);
+                if (timer.seconds() > SHOOT_TIME)
+                    setPathState(AutoState.TO_BALL_FAR);
                 break;
 
             case TO_BALL_FAR:
-                if(!actionTriggered && follower.getCurrentTValue() > 0.2) {
-                    if (!SILENT_MODE) intake.intake();
+                if (!actionTriggered && follower.getCurrentTValue() > 0.2) {
+                    if (!SILENT_MODE)
+                        intake.intake();
                     actionTriggered = true;
                 }
-                if (!follower.isBusy()) setPathStateInternal(AutoState.WAIT_BALL_FAR);
+                if (!follower.isBusy())
+                    setPathStateInternal(AutoState.WAIT_BALL_FAR);
                 break;
             case WAIT_BALL_FAR:
-                if (timer.seconds() > INTAKE_WAIT_TIME) setPathState(AutoState.TO_SCORE_FAR);
+                if (timer.seconds() > INTAKE_WAIT_TIME)
+                    setPathState(AutoState.TO_SCORE_FAR);
                 break;
             case TO_SCORE_FAR:
                 if (!actionTriggered && timer.seconds() > 0.3) {
-                    if (!SILENT_MODE) intake.stop();
+                    if (!SILENT_MODE)
+                        intake.stop();
                     actionTriggered = true;
                 }
-                if (!follower.isBusy() && isShooterReady) setPathState(AutoState.SCORE_FAR);
+                if (!follower.isBusy() && isShooterReady)
+                    setPathState(AutoState.SCORE_FAR);
                 break;
             case SCORE_FAR:
-                if (timer.seconds() > SHOOT_TIME) setPathState(AutoState.PARK);
+                if (timer.seconds() > SHOOT_TIME)
+                    setPathState(AutoState.PARK);
                 break;
 
             case PARK:
-                if (!follower.isBusy()) currentState = AutoState.IDLE;
+                if (!follower.isBusy())
+                    currentState = AutoState.IDLE;
                 break;
             case IDLE:
                 break;
@@ -280,33 +322,52 @@ public class RedAutonFull extends OpMode {
         actionTriggered = false;
 
         // Устанавливаем скорость в зависимости от того, куда едем
-        if (newState.name().contains("TO_BALL") || newState.name().contains("PARK")) {
+        if (newState.name().contains("TO_BALL")) {
             follower.setMaxPower(SPEED_TO_BALLS);
         } else if (newState.name().contains("TO_SCORE")) {
-            follower.setMaxPower(SPEED_TO_SCORE);
+            follower.setMaxPower(SPEED_TO_SCORE_FAST); // Начинаем на полной, замедляемся в loop()
         }
 
         if (newState.name().contains("SCORE") && !newState.name().contains("TO")) {
             claw.open();
-            if (!SILENT_MODE) intake.intake();
+            if (!SILENT_MODE)
+                intake.intake();
         } else if (newState.name().contains("TO_BALL")) {
             claw.close();
         }
 
         switch (newState) {
-            case TO_SCORE_PRELOAD: follower.followPath(paths.ToScorePreload, true); break;
+            case TO_SCORE_PRELOAD:
+                follower.followPath(paths.ToScorePreload, true);
+                break;
 
-            case TO_BALL_NEAR:    follower.followPath(paths.ToBallNear, true); break;
-            case TO_OPEN_GATE:    follower.followPath(paths.ToOpenGate, true); break;
-            case TO_SCORE_NEAR:   follower.followPath(paths.ToScoreNear, true); break;
+            case TO_BALL_NEAR:
+                follower.followPath(paths.ToBallNear, true);
+                break;
+            case TO_OPEN_GATE:
+                follower.followPath(paths.ToOpenGate, true);
+                break;
+            case TO_SCORE_NEAR:
+                follower.followPath(paths.ToScoreNear, true);
+                break;
 
-            case TO_BALL_MIDDLE:  follower.followPath(paths.ToBallMiddle, true); break;
-            case TO_SCORE_MIDDLE: follower.followPath(paths.ToScoreMiddle, true); break;
+            case TO_BALL_MIDDLE:
+                follower.followPath(paths.ToBallMiddle, true);
+                break;
+            case TO_SCORE_MIDDLE:
+                follower.followPath(paths.ToScoreMiddle, true);
+                break;
 
-            case TO_BALL_FAR:     follower.followPath(paths.ToBallFar, true); break;
-            case TO_SCORE_FAR:    follower.followPath(paths.ToScoreFar, true); break;
+            case TO_BALL_FAR:
+                follower.followPath(paths.ToBallFar, true);
+                break;
+            case TO_SCORE_FAR:
+                follower.followPath(paths.ToScoreFar, true);
+                break;
 
-            case PARK:            follower.followPath(paths.LeaveBase, true); break;
+            case PARK:
+                follower.followPath(paths.LeaveBase, true);
+                break;
         }
     }
 
@@ -318,13 +379,13 @@ public class RedAutonFull extends OpMode {
 
     // === ПУТИ ===
     public static class Paths {
-        public final Pose StartPose   = new Pose(112.4, 127.4);
-        public final Pose ScorePose   = new Pose(90,87);
-        public final Pose NearBallPos = new Pose(120, 85);
-        public final Pose GatePos       = new Pose(124, 75);
-        public final Pose MiddleBallPos = new Pose(122, 61);
-        public final Pose FarBallPos    = new Pose(124, 36);
-        public final Pose ParkPose    = new Pose(121, 85);
+        public final Pose StartPose = new Pose(112.4, 127.4);
+        public final Pose ScorePose = new Pose(90, 87);
+        public final Pose NearBallPos = new Pose(114, 85);
+        public final Pose GatePos = new Pose(122, 76);
+        public final Pose MiddleBallPos = new Pose(119, 59);
+        public final Pose FarBallPos = new Pose(121, 36.5);
+        public final Pose ParkPose = new Pose(117, 85);
 
         double StartHeading = Math.toRadians(45);
         double ScoreHeading = Math.toRadians(0);
@@ -358,7 +419,7 @@ public class RedAutonFull extends OpMode {
                     .build();
 
             ToBallMiddle = follower.pathBuilder()
-                    .addPath(new BezierCurve(ScorePose, new Pose(76, 79), new Pose(97, 62), MiddleBallPos))
+                    .addPath(new BezierCurve(ScorePose, new Pose(76, 79), new Pose(97, 57), MiddleBallPos))
                     .setLinearHeadingInterpolation(ScoreHeading, IntakeHeading)
                     .build();
             ToScoreMiddle = follower.pathBuilder()
