@@ -1,9 +1,7 @@
 package org.firstinspires.ftc.teamcode.math;
 
 public class MathUtils {
-
-    // Приводит угол к диапазону от -PI до +PI
-    // (Используется для PID контроллеров поворота)
+    // Приводит любой угол (хоть 720, хоть -1000) в диапазон -180...+180
     public static double normalizeAngle(double radians) {
         while (radians > Math.PI) radians -= 2 * Math.PI;
         while (radians < -Math.PI) radians += 2 * Math.PI;

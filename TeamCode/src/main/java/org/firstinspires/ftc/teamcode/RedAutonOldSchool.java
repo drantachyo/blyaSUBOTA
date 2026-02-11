@@ -21,13 +21,12 @@ import com.pedropathing.follower.Follower;
 import com.pedropathing.paths.PathChain;
 import com.pedropathing.geometry.Pose;
 
-@Autonomous(name = "RED 18 STOP & SHOOT", group = "Competition")
-public class RedAutonStopShoot extends OpMode {
+@Autonomous(name = "RED 18 OLD SCHOOL", group = "Competition")
+public class RedAutonOldSchool extends OpMode {
 
     // === ТАЙМИНГИ ===
-    public static double SHOOT_TIME = 2;
-    public static double INTAKE_WAIT_TIME = 0.6; // Обычное ожидание
-    public static double INTAKE_WAIT_GATE = 1.2; // Долгое ожидание на воротах (Gate)
+    public static double SHOOT_TIME = 1.4;
+    public static double INTAKE_WAIT_TIME = 0.6;
     public static double IDLE_RPM = 2500;
 
     // === VISION ===
@@ -78,7 +77,8 @@ public class RedAutonStopShoot extends OpMode {
         follower = Constants.createFollower(hardwareMap);
         paths = new Paths(follower);
 
-        // Старт с углом 45 градусов
+        // Устанавливаем старт С УГЛОМ (тут угол важен для одометрии)
+        // 45 градусов (или 180, зависит от того, как ты ставишь робота)
         follower.setStartingPose(new Pose(112.4, 127.4, Math.toRadians(45)));
 
         panelsTelemetry.debug("Status", "Waiting for Start...");
@@ -108,7 +108,7 @@ public class RedAutonStopShoot extends OpMode {
         shooter.update();
         Pose pose = follower.getPose();
 
-        // 1. Vision
+        // 1. Vision & Physics
         double dist = vision.getDistanceFromTarget(APRIL_TAG_ID);
         if (dist != -1) lastKnownDistance = dist;
         calculatedRPM = ShooterMath.calculateRPM(lastKnownDistance);
@@ -134,19 +134,16 @@ public class RedAutonStopShoot extends OpMode {
             if (currentState == AutoState.PARK) intake.stop();
         }
 
-        // 3. State Machine
+        // 3. State Machine (Wait + Not Busy)
         switch (currentState) {
-            // PRELOAD
             case TO_SCORE_PRELOAD:
                 if (!actionTriggered && timer.seconds() > 0.1) { intake.stop(); actionTriggered = true; }
-                // ЖДЕМ ПОЛНОЙ ОСТАНОВКИ (!isBusy)
                 if (!follower.isBusy() && shooter.isReady()) setPathState(AutoState.SCORE_PRELOAD);
                 break;
             case SCORE_PRELOAD:
                 if (timer.seconds() > SHOOT_TIME) setPathState(AutoState.TO_BALL_NEAR);
                 break;
 
-            // 1. NEAR
             case TO_BALL_NEAR:
                 if(!actionTriggered && follower.getCurrentTValue() > 0.2) { intake.intake(); actionTriggered = true; }
                 if (!follower.isBusy()) setPathStateInternal(AutoState.WAIT_BALL_NEAR);
@@ -156,14 +153,12 @@ public class RedAutonStopShoot extends OpMode {
                 break;
             case TO_SCORE_NEAR:
                 if (!actionTriggered && timer.seconds() > 0.3) { intake.stop(); actionTriggered = true; }
-                // ЖДЕМ ОСТАНОВКИ
                 if (!follower.isBusy() && shooter.isReady()) setPathState(AutoState.SCORE_NEAR);
                 break;
             case SCORE_NEAR:
                 if (timer.seconds() > SHOOT_TIME) setPathState(AutoState.TO_BALL_MIDDLE);
                 break;
 
-            // 2. MIDDLE
             case TO_BALL_MIDDLE:
                 if(!actionTriggered && follower.getCurrentTValue() > 0.2) { intake.intake(); actionTriggered = true; }
                 if (!follower.isBusy()) setPathStateInternal(AutoState.WAIT_BALL_MIDDLE);
@@ -173,32 +168,27 @@ public class RedAutonStopShoot extends OpMode {
                 break;
             case TO_SCORE_MIDDLE:
                 if (!actionTriggered && timer.seconds() > 0.3) { intake.stop(); actionTriggered = true; }
-                // ЖДЕМ ОСТАНОВКИ
                 if (!follower.isBusy() && shooter.isReady()) setPathState(AutoState.SCORE_MIDDLE);
                 break;
             case SCORE_MIDDLE:
                 if (timer.seconds() > SHOOT_TIME) setPathState(AutoState.TO_BALL_GATE);
                 break;
 
-            // 3. GATE (С долгим ожиданием)
             case TO_BALL_GATE:
                 if(!actionTriggered && follower.getCurrentTValue() > 0.2) { intake.intake(); actionTriggered = true; }
                 if (!follower.isBusy()) setPathStateInternal(AutoState.WAIT_BALL_GATE);
                 break;
             case WAIT_BALL_GATE:
-                // ЖДЕМ ДОЛЬШЕ НА ВОРОТАХ
-                if (timer.seconds() > INTAKE_WAIT_GATE) setPathState(AutoState.TO_SCORE_GATE);
+                if (timer.seconds() > INTAKE_WAIT_TIME) setPathState(AutoState.TO_SCORE_GATE);
                 break;
             case TO_SCORE_GATE:
                 if (!actionTriggered && timer.seconds() > 0.3) { intake.stop(); actionTriggered = true; }
-                // ЖДЕМ ОСТАНОВКИ
                 if (!follower.isBusy() && shooter.isReady()) setPathState(AutoState.SCORE_GATE);
                 break;
             case SCORE_GATE:
                 if (timer.seconds() > SHOOT_TIME) setPathState(AutoState.TO_BALL_FAR);
                 break;
 
-            // 4. FAR
             case TO_BALL_FAR:
                 if(!actionTriggered && follower.getCurrentTValue() > 0.2) { intake.intake(); actionTriggered = true; }
                 if (!follower.isBusy()) setPathStateInternal(AutoState.WAIT_BALL_FAR);
@@ -208,7 +198,6 @@ public class RedAutonStopShoot extends OpMode {
                 break;
             case TO_SCORE_FAR:
                 if (!actionTriggered && timer.seconds() > 0.3) { intake.stop(); actionTriggered = true; }
-                // ЖДЕМ ОСТАНОВКИ
                 if (!follower.isBusy() && shooter.isReady()) setPathState(AutoState.SCORE_FAR);
                 break;
             case SCORE_FAR:
@@ -260,23 +249,26 @@ public class RedAutonStopShoot extends OpMode {
         actionTriggered = false;
     }
 
-    // === PATHS ===
+    // === ПУТИ БЕЗ ЛИШНИХ ТОЧЕК ===
     public static class Paths {
-        public final Pose StartPose   = new Pose(112.4, 127.4);
-        public final Pose ScorePose   = new Pose(96,84);
 
-        public final Pose NearBallPos   = new Pose(124.5, 83);
-        public final Pose MiddleBallPos = new Pose(126, 59);
-        public final Pose GateBallPos   = new Pose(128.8, 59);
-        public final Pose FarBallPos    = new Pose(126, 36.5);
+        // ЗАДАЕМ КООРДИНАТЫ БЕЗ УГЛОВ (или с 0)
+        // Углы будут заданы в интерполяции ниже
+        public final Pose StartPose   = new Pose(112.4, 127.4);
+        public final Pose ScorePose   = new Pose(94.2, 88.5);
+
+        public final Pose NearBallPos   = new Pose(122, 84);
+        public final Pose MiddleBallPos = new Pose(126, 58);
+        public final Pose GateBallPos   = new Pose(122, 63);
+        public final Pose FarBallPos    = new Pose(126, 37);
 
         public final Pose ParkPose      = new Pose(117, 50);
 
-        // HEADINGS
+        // УГЛЫ ДЛЯ ИНТЕРПОЛЯЦИИ (В РАДИАНАХ)
         double StartHeading = Math.toRadians(45);
-        double ScoreHeading = Math.toRadians(-45);
-        double IntakeHeading = Math.toRadians(0);
-        double GateHeading = Math.toRadians(45);
+        double ScoreHeading = Math.toRadians(-45); // Смотрим в корзину
+        double IntakeHeading = Math.toRadians(0);  // Смотрим прямо на шары
+        double GateHeading = Math.toRadians(45);   // Угол для ворот
 
         public PathChain ToScorePreload;
         public PathChain ToBallNear, ToScoreNear;
@@ -286,6 +278,8 @@ public class RedAutonStopShoot extends OpMode {
         public PathChain LeaveBase;
 
         public Paths(Follower follower) {
+
+            // Используем BezierLine(Pose, Pose) - Pedro это умеет
 
             // Preload
             ToScorePreload = follower.pathBuilder()
@@ -303,9 +297,10 @@ public class RedAutonStopShoot extends OpMode {
                     .setLinearHeadingInterpolation(IntakeHeading, ScoreHeading)
                     .build();
 
-            // 2. Middle
+            // 2. Middle (Curve: Start -> Control -> End)
+            // Control Point (101, 71) задаем как Pose без угла
             ToBallMiddle = follower.pathBuilder()
-                    .addPath(new BezierCurve(ScorePose, new Pose(98.6, 60), MiddleBallPos))
+                    .addPath(new BezierCurve(ScorePose, new Pose(101, 71), MiddleBallPos))
                     .setLinearHeadingInterpolation(ScoreHeading, IntakeHeading)
                     .build();
             ToScoreMiddle = follower.pathBuilder()
@@ -323,9 +318,10 @@ public class RedAutonStopShoot extends OpMode {
                     .setLinearHeadingInterpolation(GateHeading, ScoreHeading)
                     .build();
 
-            // 4. Far
+            // 4. Far (Curve)
+            // Control Point (101, 71)
             ToBallFar = follower.pathBuilder()
-                    .addPath(new BezierCurve(ScorePose, new Pose(99.1, 39.5), FarBallPos))
+                    .addPath(new BezierCurve(ScorePose, new Pose(101, 71), FarBallPos))
                     .setLinearHeadingInterpolation(ScoreHeading, IntakeHeading)
                     .build();
             ToScoreFar = follower.pathBuilder()

@@ -26,7 +26,7 @@ public class Vision {
 
         // Decimation (прореживание) - ускоряет обработку за счет снижения качества
         // 3 - отличный баланс для дистанций до 2-3 метров
-        aprilTag.setDecimation(3);
+        aprilTag.setDecimation(2);
 
         portal = new VisionPortal.Builder()
                 .setCamera(hw.get(WebcamName.class, "Webcam")) // Проверь имя в конфиге!
@@ -46,7 +46,7 @@ public class Vision {
      */
     public boolean applyCombatSettings() {
         // Выдержка 2мс, Усиление 250 (можно поиграть с Gain, если слишком темно)
-        return setManualExposure(2, 250);
+        return setManualExposure(2, 130);
     }
 
     private boolean setManualExposure(int exposureMS, int gain) {

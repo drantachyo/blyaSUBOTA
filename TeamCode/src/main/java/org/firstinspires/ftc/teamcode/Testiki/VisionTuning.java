@@ -60,7 +60,6 @@ public class VisionTuning extends OpMode {
         // 3. ТЕЛЕМЕТРИЯ И ГРАФИКИ
         // В Dashboard нажмите на эти поля, чтобы увидеть график
         telemetry.addData("Vision Error (Bearing)", errorDegrees);
-        telemetry.addData("Turret State", turret.getState());
 
         telemetry.addData("--- CURRENT VIS PID ---", "");
         telemetry.addData("P", SimpleTurret.VIS_P);
